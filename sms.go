@@ -27,6 +27,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("main: error connecting to modem. %s", err)
 	}
+	modem.Reset(m.Port)
+	if err != nil {
+		log.Fatalf("main: error reseting modem. %s", err)
+	}
 	worker.InitWorker(m)
 	err = api.InitServer(cfg.ServerHost, cfg.ServerPort)
 	if err != nil {

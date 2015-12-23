@@ -45,6 +45,6 @@ func producer(messages chan common.SMS) {
 			log.Printf("producer: Processing %#v", msg)
 			messages <- msg
 		}
-		time.Sleep(5000 * time.Millisecond)
+		time.Sleep(10000 * time.Millisecond)
 	}
 }

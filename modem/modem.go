@@ -17,6 +17,8 @@ import (
 
 var err error
 
+const waitReps int = 5
+
 type Modem interface {
 	Connect() (err error)
 }
@@ -63,22 +65,22 @@ func SendCommand(p Port, command string, wait bool) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("SendCommand: Failed to write to port.\n%s", err.Error())
 	}
-	var reps int = 1
+	var output string
 	if wait {
-		reps = 5
-	}
-	output, err := WaitForOutput(p, reps, "OK\r\n")
-	if err != nil {
-		return "", fmt.Errorf("SendCommand: Failed to wait for output.\n%s", err.Error())
+		output, err = WaitForOutput(p, waitReps, "OK\r\n")
+		if err != nil {
+			return "", fmt.Errorf("SendCommand: Failed to wait for output.\n%s", err.Error())
+		}
 	}
 	return output, nil
 }
 
 func WaitForOutput(p Port, reps int, suffix string) (string, error) {
+	log.Printf("WaitForOutput... %d %#v", reps, suffix)
 	var status string
 	var buffer bytes.Buffer
 	buf := make([]byte, 32)
-	for i := 0; i < reps; {
+	for i := 1; i < reps+1; {
 		// ignoring error as EOF raises error on Linux
 		n, _ := p.Read(buf)
 		if n > 0 {
@@ -96,7 +98,7 @@ func WaitForOutput(p Port, reps int, suffix string) (string, error) {
 				}
 			}
 		} else {
-			log.Printf("WaitForOutput: No output on %d iteration", i)
+			log.Printf("WaitForOutput: No output on %dth iteration", i)
 			// time.Sleep(time.Millisecond * 500)
 			i++
 		}
@@ -145,11 +147,14 @@ func Reset(p Port) error {
 		"AT+CSMP=49,167,0,0\r",
 		"AT+CPMS=\"ME\",\"ME\",\"ME\"\r",
 		"AT+CNMI=2,1,0,2\r",
+		"AT+CSCS=\"GSM\"\r",
 	}
+	// Send C^Z first
+	_, err = SendCommand(p, string(26), false)
 	for _, c := range InitCommands {
 		for i := 0; i < 10; i++ {
 			log.Printf("%v, %#v", i, c)
-			_, err = SendCommand(p, c, false)
+			_, err = SendCommand(p, c, true)
 			if err != nil && i < 9 {
 				log.Println(err)
 				time.Sleep(time.Millisecond * 500)
@@ -166,10 +171,10 @@ func Reset(p Port) error {
 func GetBalance(p Port, ussdRequest string) (float64, error) {
 	log.Println("GetBalance...")
 	//re-set encoding here?
-	//m.SendCommand("AT+CSCS=\"GSM\"\r", false)
+	//m.SendCommand("AT+CSCS=\"GSM\"\r", true)
 	//TODO: Is it necessery to run AT+CMGF=0 ???
-	SendCommand(p, "AT+CMGF=0\r", false)
-	SendCommand(p, "AT^USSDMODE=1\r", false)
+	SendCommand(p, "AT+CMGF=0\r", true)
+	SendCommand(p, "AT^USSDMODE=1\r", true)
 	request := strings.ToUpper(fmt.Sprintf("%x", pdu.Encode7Bit(ussdRequest)))
 	_, err = SendCommand(p, fmt.Sprintf("AT+CUSD=1,\"%s\",15\r", request), true)
 	if err != nil {
@@ -202,11 +207,21 @@ func GetBalance(p Port, ussdRequest string) (float64, error) {
 func SendMessage(p Port, mobile string, message string) error {
 	log.Println("SendMessage...", mobile, message)
 	// Put Modem in SMS Text Mode
-	SendCommand(p, "AT+CMGF=1\r", false)
+	_, err = SendCommand(p, "AT+CMGF=1\r", true)
+	if err != nil {
+		return fmt.Errorf("SendMessage: Failed to send command.\n%s", err.Error())
+	}
 	// Send message
-	SendCommand(p, "AT+CMGS=\""+mobile+"\"\r", false)
+	_, err = SendCommand(p, "AT+CMGS=\""+mobile+"\"\r", false)
+	if err != nil {
+		return fmt.Errorf("SendMessage: Failed to send command.\n%s", err.Error())
+	}
+	_, err = WaitForOutput(p, waitReps, "\r\n> ")
+	if err != nil {
+		return fmt.Errorf("SendMessage: Failed to wait for output.\n%s", err.Error())
+	}
 	// EOM CTRL-Z = 26
-	_, err := SendCommand(p, message+string(26), true)
+	_, err = SendCommand(p, message+string(26), true)
 	if err != nil {
 		return fmt.Errorf("SendMessage: Failed to send command.\n%s", err.Error())
 	}
@@ -216,8 +231,8 @@ func SendMessage(p Port, mobile string, message string) error {
 func DeleteMessage(p Port, messageIndex int) error {
 	log.Println("DeleteMessage...")
 	// Put Modem in SMS Text Mode
-	SendCommand(p, "AT+CMGF=1\r", false)
-	_, err := SendCommand(p, fmt.Sprintf("AT+CMGD=%d\r", messageIndex), true)
+	SendCommand(p, "AT+CMGF=1\r", true)
+	_, err = SendCommand(p, fmt.Sprintf("AT+CMGD=%d\r", messageIndex), true)
 	if err != nil {
 		return fmt.Errorf("DeleteMessage: Failed to send command.\n%s", err.Error())
 	}
@@ -272,7 +287,7 @@ func GetMessageIndexes(p Port) ([]int, error) {
 	var messageIndexes []int
 	log.Println("GetMessageIndexes...")
 	// Put Modem in SMS Text Mode
-	SendCommand(p, "AT+CMGF=1\r", false)
+	SendCommand(p, "AT+CMGF=1\r", true)
 	// Get message indexes
 	status, err := SendCommand(p, "AT+CMGD=?\r", true)
 	if err != nil {

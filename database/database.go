@@ -60,6 +60,7 @@ func InsertMessage(sms *common.SMS) error {
 	return nil
 }
 
+//TODO: locks for driver.Stmt (stmt) and driver.Conn (db)
 func UpdateMessageStatus(sms common.SMS) error {
 	log.Printf("Updating msg status %#v", sms)
 	stmt, err := db.Prepare("UPDATE messages SET status=?, retries=?, updated_at=DATETIME('now') WHERE uuid=?")
