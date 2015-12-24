@@ -22,16 +22,15 @@ func main() {
 		log.Fatalf("main: Error initializing database: %s", err.Error())
 	}
 
-	m := modem.New(cfg.ComPort, cfg.BaudRate)
-	err = m.Connect()
+	err = modem.InitModem(cfg.ComPort, cfg.BaudRate)
 	if err != nil {
-		log.Fatalf("main: error connecting to modem. %s", err)
+		log.Fatalf("main: error initializing to modem. %s", err)
 	}
-	modem.Reset(m.Port)
+	err = modem.Reset()
 	if err != nil {
 		log.Fatalf("main: error reseting modem. %s", err)
 	}
-	worker.InitWorker(m)
+	worker.InitWorker()
 	err = api.InitServer(cfg.ServerHost, cfg.ServerPort)
 	if err != nil {
 		log.Fatalf("main: Error starting server: %s", err.Error())

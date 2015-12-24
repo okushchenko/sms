@@ -11,17 +11,17 @@ import (
 
 var err error
 
-func InitWorker(m *modem.GSMModem) {
+func InitWorker() {
 	messages := make(chan common.SMS)
 	go producer(messages)
-	go consumer(messages, m)
+	go consumer(messages)
 }
 
-func consumer(messages chan common.SMS, m *modem.GSMModem) {
+func consumer(messages chan common.SMS) {
 	for {
 		message := <-messages
 		log.Println("consumer: processing", message.UUID)
-		err = modem.SendMessage(m.Port, message.Mobile, message.Body)
+		err = modem.SendMessage(message.Mobile, message.Body)
 		if err != nil {
 			message.Status = "error"
 			log.Println("consumer: failed to process", message.UUID, err)

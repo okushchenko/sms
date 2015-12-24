@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/alexgear/sms/common"
-	//"github.com/alexgear/sms/modem"
+	"github.com/alexgear/sms/modem"
 	//"github.com/gorilla/mux"
 	db "github.com/alexgear/sms/database"
 	"github.com/satori/go.uuid"
@@ -22,7 +22,15 @@ type SMSResponse struct {
 	UUID   string `json:"uuid"`
 }
 
+type BalanceResponse struct {
+	Balance float64 `json:"balance"`
+}
+
 func sendSMSHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
+		return
+	}
 	w.Header().Set("Content-type", "application/json")
 	r.ParseForm()
 	log.Printf("sendSMSHandler: %#v", r.Form)
@@ -38,8 +46,8 @@ func sendSMSHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	smsresp := SMSResponse{Status: 200, Text: sms.Body, UUID: sms.UUID}
-	toWrite, err := json.Marshal(smsresp)
+	response := SMSResponse{Status: 200, Text: sms.Body, UUID: sms.UUID}
+	toWrite, err := json.Marshal(response)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -50,15 +58,19 @@ func sendSMSHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBalanceHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
+		return
+	}
 	w.Header().Set("Content-type", "application/json")
-	//err = db.InsertMessage(sms)
-	//if err != nil {
-	//	log.Println(err)
-	//	http.Error(w, err.Error(), http.StatusInternalServerError)
-	//	return
-	//}
-	smsresp := SMSResponse{Status: 200}
-	toWrite, err := json.Marshal(smsresp)
+	balance, err := modem.GetBalance(`*111#`)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	response := BalanceResponse{Balance: balance}
+	toWrite, err := json.Marshal(response)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

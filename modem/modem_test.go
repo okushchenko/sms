@@ -62,54 +62,32 @@ func (p *FakePort) Close() (err error) {
 	return nil
 }
 
-type FakeModem struct {
-	ComPort string
-	Port    Port
-}
-
-func FakeNew() (modem *FakeModem) {
-	modem = &FakeModem{}
-	return modem
-}
-
-func (m *FakeModem) Connect() (err error) {
+func InitFakeModem() (err error) {
+	m = &modem{}
 	m.Port = &FakePort{}
 	return nil
 }
 
-func TestConnect(t *testing.T) {
-	gsm := FakeNew()
-	err = gsm.Connect()
-	if err != nil {
-		t.Fatal(err)
-	}
+func init() {
+	InitFakeModem()
 }
 
 func TestReset(t *testing.T) {
-	gsm := FakeNew()
-	err = gsm.Connect()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = Reset(gsm.Port)
+	err = Reset()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestCheckConnection(t *testing.T) {
-	gsm := FakeNew()
-	gsm.Connect()
-	err = CheckConnection(gsm.Port)
+	err = CheckConnection()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestGetSignal(t *testing.T) {
-	gsm := FakeNew()
-	gsm.Connect()
-	signal, err := GetSignal(gsm.Port)
+	signal, err := GetSignal()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,9 +97,7 @@ func TestGetSignal(t *testing.T) {
 }
 
 func TestGetCharset(t *testing.T) {
-	gsm := FakeNew()
-	gsm.Connect()
-	charset, err := GetCharset(gsm.Port)
+	charset, err := GetCharset()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,9 +108,7 @@ func TestGetCharset(t *testing.T) {
 
 func TestGetMessageIndexes(t *testing.T) {
 	expectedIndexes := []int{0, 3, 17}
-	gsm := FakeNew()
-	gsm.Connect()
-	indexes, err := GetMessageIndexes(gsm.Port)
+	indexes, err := GetMessageIndexes()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,9 +126,7 @@ func TestGetMessage(t *testing.T) {
 		Body:   "Balans 46.00hrn, bonus 0.00hrn.\n***\nZalyshok schodennogo paketu poslug: 45SMS; Bezlimitni hvylyny na life:); 50.0MB Internetu; Dzvinky po 25 kop/hv na in",
 		Index:  3,
 	}
-	gsm := FakeNew()
-	gsm.Connect()
-	message, err := GetMessage(gsm.Port, 3)
+	message, err := GetMessage(3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,9 +163,7 @@ func TestGetMessages(t *testing.T) {
 			Index:  17,
 		},
 	}
-	gsm := FakeNew()
-	gsm.Connect()
-	messages, err := GetMessages(gsm.Port)
+	messages, err := GetMessages()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,36 +175,22 @@ func TestGetMessages(t *testing.T) {
 }
 
 func TestSendMessage(t *testing.T) {
-	gsm := FakeNew()
-	gsm.Connect()
-	err = SendMessage(gsm.Port, "+380631234567", "test")
+	err = SendMessage("+380631234567", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestDeleteMessage(t *testing.T) {
-	gsm := FakeNew()
-	gsm.Connect()
-	err = DeleteMessage(gsm.Port, 0)
+	err = DeleteMessage(0)
 	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestNew(t *testing.T) {
-	modem := New("/dev/ttyUSB0", 115200)
-	expectedModem := &GSMModem{ComPort: "/dev/ttyUSB0", BaudRate: 115200}
-	if !reflect.DeepEqual(modem, expectedModem) {
 		t.Fatal(err)
 	}
 }
 
 func TestGetBalance(t *testing.T) {
 	balanceExpected := 107.0
-	gsm := FakeNew()
-	gsm.Connect()
-	balance, err := GetBalance(gsm.Port, `*111#`)
+	balance, err := GetBalance(`*111#`)
 	if err != nil {
 		t.Fatal(err)
 	}

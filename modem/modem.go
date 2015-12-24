@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tarm/serial"
@@ -16,14 +17,17 @@ import (
 )
 
 var err error
+var lock sync.Mutex
 
 const waitReps int = 5
+
+var m *modem
 
 type Modem interface {
 	Connect() (err error)
 }
 
-type GSMModem struct {
+type modem struct {
 	ComPort  string
 	BaudRate int
 	Port     Port
@@ -44,30 +48,28 @@ type Port interface {
 	Close() (err error)
 }
 
-func New(ComPort string, BaudRate int) (modem *GSMModem) {
-	modem = &GSMModem{ComPort: ComPort, BaudRate: BaudRate}
-	return modem
-}
-
-func (m *GSMModem) Connect() (err error) {
+func InitModem(ComPort string, BaudRate int) (err error) {
+	m = &modem{ComPort: ComPort, BaudRate: BaudRate}
 	config := &serial.Config{Name: m.ComPort, Baud: m.BaudRate, ReadTimeout: time.Second}
 	m.Port, err = serial.OpenPort(config)
 	if err != nil {
-		return fmt.Errorf("GSMModem.Connect: Failed to open port. %s", err.Error())
+		return fmt.Errorf("InitModem: Failed to open port. %s", err.Error())
 	}
 	return nil
 }
 
-func SendCommand(p Port, command string, wait bool) (string, error) {
+func SendCommand(command string, wait bool) (string, error) {
 	log.Println("SendCommand...", command)
-	p.Flush()
-	_, err = p.Write([]byte(command))
+	lock.Lock()
+	m.Port.Flush()
+	_, err = m.Port.Write([]byte(command))
+	lock.Unlock()
 	if err != nil {
 		return "", fmt.Errorf("SendCommand: Failed to write to port.\n%s", err.Error())
 	}
 	var output string
 	if wait {
-		output, err = WaitForOutput(p, waitReps, "OK\r\n")
+		output, err = WaitForOutput(waitReps, "OK\r\n")
 		if err != nil {
 			return "", fmt.Errorf("SendCommand: Failed to wait for output.\n%s", err.Error())
 		}
@@ -75,14 +77,16 @@ func SendCommand(p Port, command string, wait bool) (string, error) {
 	return output, nil
 }
 
-func WaitForOutput(p Port, reps int, suffix string) (string, error) {
+func WaitForOutput(reps int, suffix string) (string, error) {
 	log.Printf("WaitForOutput... %d %#v", reps, suffix)
 	var status string
 	var buffer bytes.Buffer
 	buf := make([]byte, 32)
+	lock.Lock()
+	defer lock.Unlock()
 	for i := 1; i < reps+1; {
 		// ignoring error as EOF raises error on Linux
-		n, _ := p.Read(buf)
+		n, _ := m.Port.Read(buf)
 		if n > 0 {
 			buffer.Write(buf[:n])
 			status = buffer.String()
@@ -106,9 +110,9 @@ func WaitForOutput(p Port, reps int, suffix string) (string, error) {
 	return status, errors.New("WaitForOutput: Timed out.")
 }
 
-func GetSignal(p Port) (float64, error) {
+func GetSignal() (float64, error) {
 	log.Println("GetSignal...")
-	status, err := SendCommand(p, "AT+CSQ\r", true)
+	status, err := SendCommand("AT+CSQ\r", true)
 	if err != nil {
 		return 0.0, err
 	}
@@ -117,25 +121,25 @@ func GetSignal(p Port) (float64, error) {
 			regexp.MustCompile(`\d+,\d+`).FindString(status), ",", ".", 1), 64)
 }
 
-func GetCharset(p Port) (string, error) {
+func GetCharset() (string, error) {
 	log.Println("GetCharset...")
-	status, err := SendCommand(p, "AT+CSCS?\r", true)
+	status, err := SendCommand("AT+CSCS?\r", true)
 	if err != nil {
 		return "", err
 	}
 	return regexp.MustCompile(`\"[A-Za-z0-9]+\"`).FindString(status), nil
 }
 
-func CheckConnection(p Port) error {
+func CheckConnection() error {
 	log.Println("CheckConnection...")
-	_, err = SendCommand(p, "AT\r", true)
+	_, err = SendCommand("AT\r", true)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func Reset(p Port) error {
+func Reset() error {
 	log.Println("Reset...")
 	InitCommands := []string{
 		"ATZ\r",
@@ -150,11 +154,11 @@ func Reset(p Port) error {
 		"AT+CSCS=\"GSM\"\r",
 	}
 	// Send C^Z first
-	_, err = SendCommand(p, string(26), false)
+	_, err = SendCommand(string(26), false)
 	for _, c := range InitCommands {
 		for i := 0; i < 10; i++ {
 			log.Printf("%v, %#v", i, c)
-			_, err = SendCommand(p, c, true)
+			_, err = SendCommand(c, true)
 			if err != nil && i < 9 {
 				log.Println(err)
 				time.Sleep(time.Millisecond * 500)
@@ -168,19 +172,19 @@ func Reset(p Port) error {
 	return nil
 }
 
-func GetBalance(p Port, ussdRequest string) (float64, error) {
+func GetBalance(ussdRequest string) (float64, error) {
 	log.Println("GetBalance...")
 	//re-set encoding here?
 	//m.SendCommand("AT+CSCS=\"GSM\"\r", true)
 	//TODO: Is it necessery to run AT+CMGF=0 ???
-	SendCommand(p, "AT+CMGF=0\r", true)
-	SendCommand(p, "AT^USSDMODE=1\r", true)
+	SendCommand("AT+CMGF=0\r", true)
+	SendCommand("AT^USSDMODE=1\r", true)
 	request := strings.ToUpper(fmt.Sprintf("%x", pdu.Encode7Bit(ussdRequest)))
-	_, err = SendCommand(p, fmt.Sprintf("AT+CUSD=1,\"%s\",15\r", request), true)
+	_, err = SendCommand(fmt.Sprintf("AT+CUSD=1,\"%s\",15\r", request), true)
 	if err != nil {
 		return 0.0, err
 	}
-	status, err := WaitForOutput(p, 10, "15\r\n")
+	status, err := WaitForOutput(10, "15\r\n")
 	regex := regexp.MustCompile(`\+CUSD: \d{1},\"([a-zA-Z0-9]*)\",\d*`)
 	if regex.MatchString(status) {
 		balanceRaw := regex.FindStringSubmatch(status)[1]
@@ -204,44 +208,44 @@ func GetBalance(p Port, ussdRequest string) (float64, error) {
 	return 0.0, errors.New("GetBalace: Failed to get balance.")
 }
 
-func SendMessage(p Port, mobile string, message string) error {
+func SendMessage(mobile string, message string) error {
 	log.Println("SendMessage...", mobile, message)
 	// Put Modem in SMS Text Mode
-	_, err = SendCommand(p, "AT+CMGF=1\r", true)
+	_, err = SendCommand("AT+CMGF=1\r", true)
 	if err != nil {
 		return fmt.Errorf("SendMessage: Failed to send command.\n%s", err.Error())
 	}
 	// Send message
-	_, err = SendCommand(p, "AT+CMGS=\""+mobile+"\"\r", false)
+	_, err = SendCommand("AT+CMGS=\""+mobile+"\"\r", false)
 	if err != nil {
 		return fmt.Errorf("SendMessage: Failed to send command.\n%s", err.Error())
 	}
-	_, err = WaitForOutput(p, waitReps, "\r\n> ")
+	_, err = WaitForOutput(waitReps, "\r\n> ")
 	if err != nil {
 		return fmt.Errorf("SendMessage: Failed to wait for output.\n%s", err.Error())
 	}
 	// EOM CTRL-Z = 26
-	_, err = SendCommand(p, message+string(26), true)
+	_, err = SendCommand(message+string(26), true)
 	if err != nil {
 		return fmt.Errorf("SendMessage: Failed to send command.\n%s", err.Error())
 	}
 	return nil
 }
 
-func DeleteMessage(p Port, messageIndex int) error {
+func DeleteMessage(messageIndex int) error {
 	log.Println("DeleteMessage...")
 	// Put Modem in SMS Text Mode
-	SendCommand(p, "AT+CMGF=1\r", true)
-	_, err = SendCommand(p, fmt.Sprintf("AT+CMGD=%d\r", messageIndex), true)
+	SendCommand("AT+CMGF=1\r", true)
+	_, err = SendCommand(fmt.Sprintf("AT+CMGD=%d\r", messageIndex), true)
 	if err != nil {
 		return fmt.Errorf("DeleteMessage: Failed to send command.\n%s", err.Error())
 	}
 	return nil
 }
 
-func GetMessage(p Port, messageIndex int) (*message, error) {
+func GetMessage(messageIndex int) (*message, error) {
 	log.Println("GetMessage...")
-	status, err := SendCommand(p, fmt.Sprintf("AT+CMGR=%d\r", messageIndex), true)
+	status, err := SendCommand(fmt.Sprintf("AT+CMGR=%d\r", messageIndex), true)
 	if err != nil {
 		return nil, fmt.Errorf("GetMessage: Failed to send command.\n%s", err.Error())
 	}
@@ -283,13 +287,13 @@ func GetMessage(p Port, messageIndex int) (*message, error) {
 	}
 }
 
-func GetMessageIndexes(p Port) ([]int, error) {
+func GetMessageIndexes() ([]int, error) {
 	var messageIndexes []int
 	log.Println("GetMessageIndexes...")
 	// Put Modem in SMS Text Mode
-	SendCommand(p, "AT+CMGF=1\r", true)
+	SendCommand("AT+CMGF=1\r", true)
 	// Get message indexes
-	status, err := SendCommand(p, "AT+CMGD=?\r", true)
+	status, err := SendCommand("AT+CMGD=?\r", true)
 	if err != nil {
 		return messageIndexes, err
 	}
@@ -314,16 +318,16 @@ func GetMessageIndexes(p Port) ([]int, error) {
 	}
 }
 
-func GetMessages(p Port) ([]*message, error) {
-	log.Println("GetMessages...")
+func GetMessages() ([]*message, error) {
+	log.Println("GetMesages...")
 	var messages []*message
-	messageIndexes, err := GetMessageIndexes(p)
+	messageIndexes, err := GetMessageIndexes()
 	if err != nil {
 		return messages, err
 	}
 	log.Println("GetMessages:", messageIndexes)
 	for _, messageIndex := range messageIndexes {
-		msg, err := GetMessage(p, messageIndex)
+		msg, err := GetMessage(messageIndex)
 		if err != nil {
 			return messages, err
 		} else {
