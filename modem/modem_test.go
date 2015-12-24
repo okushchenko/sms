@@ -21,7 +21,7 @@ func (p *FakePort) Read(b []byte) (n int, err error) {
 }
 
 func (p *FakePort) Write(b []byte) (n int, err error) {
-	InitCommands := map[string]string{
+	KnownCommands := map[string]string{
 		"ATZ\r":                          "\r\nOK\r\n",
 		"AT\r":                           "\r\nOK\r\n",
 		"ATE0\r":                         "ATE0\r\nOK\r\n",
@@ -31,6 +31,7 @@ func (p *FakePort) Write(b []byte) (n int, err error) {
 		"AT+CMGF=0\r":                    "\r\nOK\r\n",
 		"AT+CMGF=1\r":                    "\r\nOK\r\n",
 		"AT^USSDMODE=1\r":                "\r\nOK\r\n",
+		"AT+CSCS=\"GSM\"\r":              "\r\nOK\r\n",
 		"AT+CUSD=1,\"AA582C3602\",15\r":  "\r\nFFFFFFFFFFFFFFFFFFFFFFFF\r\nOK\r\n+CUSD: 0,\"C2303BEC9E8362B09B0B0643CBDD2C90F8EDAECF4130170C8696BB5D0A954AA58096E5657B5ABE0E83F461767E8E5ED741F0F79C5D3F835431596CA400\",15\r\n",
 		"AT+CSMP=49,167,0,0\r":           "\r\nOK\r\n",
 		"AT+CPMS=\"ME\",\"ME\",\"ME\"\r": "\r\n+CPMS: 23,50,23,50,23,50\r\n\r\nOK\r\n",
@@ -42,10 +43,11 @@ func (p *FakePort) Write(b []byte) (n int, err error) {
 		"AT+CMGR=0\r":                    "\r\n+CMGR: \"REC UNREAD\",\"1081051021015841\",,\"15/11/02,17:34:06+08\"\r\n041404170412041E041D04060422042C0020041704100020041A041E04200414041E041D002004140415042804150412041E00210020040404320440043E043F0430002C00200410043C043504400438043A0430002C0020041A0438044204300439002C00200420043E04410456044F00200442043000200456043D044804560020043A0440\r\n\r\nOK\r\n",
 		"AT+CMGR=3\r":                    "\r\n+CMGR: \"REC READ\",\"53525151\",,\"15/10/29,17:49:08+08\"\r\n42616C616E732034362E303068726E2C20626F6E757320302E303068726E2E0A2A2A2A0A5A616C7973686F6B207363686F64656E6E6F676F2070616B65747520706F736C75673A203435534D533B2042657A6C696D69746E69206876796C796E79206E61206C6966653A293B2035302E304D4220496E7465726E6574753B20447A76696E6B7920706F203235206B6F702F6876206E6120696E\r\n\r\nOK\r\n",
 		"AT+CMGR=17\r":                   "\r\n+CMGR: \"REC READ\",\"+380631234567\",,\"15/11/01,03:20:05+08\"\r\ntest\r\n\r\nOK\r\n",
+		"AT+CMGS=\"+380631234567\"\r":    "\r\n> ",
 		"test" + string(26):              "\r\nOK\r\n",
 	}
-	if InitCommands[string(b)] != "" {
-		p.buffer = ([]byte(InitCommands[string(b)]))
+	if KnownCommands[string(b)] != "" {
+		p.buffer = ([]byte(KnownCommands[string(b)]))
 	}
 	return 0, nil
 }
