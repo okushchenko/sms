@@ -7,9 +7,9 @@ import (
 	"net/http"
 
 	"github.com/alexgear/sms/common"
-	"github.com/alexgear/sms/modem"
-	//"github.com/gorilla/mux"
 	db "github.com/alexgear/sms/database"
+	"github.com/alexgear/sms/modem"
+	"github.com/gorilla/mux"
 	"github.com/satori/go.uuid"
 )
 
@@ -17,9 +17,9 @@ var err error
 
 //response structure to /sms
 type SMSResponse struct {
-	Status int    `json:"status"`
 	Text   string `json:"text"`
 	UUID   string `json:"uuid"`
+	Status string `json:"status"`
 }
 
 type BalanceResponse struct {
@@ -27,10 +27,10 @@ type BalanceResponse struct {
 }
 
 func sendSMSHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
-		return
-	}
+	//if r.Method != "POST" {
+	//	http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
+	//	return
+	//}
 	w.Header().Set("Content-type", "application/json")
 	r.ParseForm()
 	log.Printf("sendSMSHandler: %#v", r.Form)
@@ -46,7 +46,7 @@ func sendSMSHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	response := SMSResponse{Status: 200, Text: sms.Body, UUID: sms.UUID}
+	response := SMSResponse{Text: sms.Body, UUID: sms.UUID, Status: sms.Status}
 	toWrite, err := json.Marshal(response)
 	if err != nil {
 		log.Println(err)
@@ -58,10 +58,10 @@ func sendSMSHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
-		return
-	}
+	//if r.Method != "GET" {
+	//	http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
+	//	return
+	//}
 	w.Header().Set("Content-type", "application/json")
 	balance, err := modem.GetBalance(`*111#`)
 	if err != nil {
@@ -80,15 +80,32 @@ func getBalanceHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func getSMSHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	w.Header().Set("Content-type", "application/json")
+	sms, err := db.GetMessageByUuid(vars["uuid"])
+	if err != nil {
+		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	response := SMSResponse{Text: sms.Body, UUID: sms.UUID, Status: sms.Status}
+	toWrite, err := json.Marshal(response)
+	if err != nil {
+		log.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write(toWrite)
+	return
+}
+
 func InitServer(host string, port int) error {
-	//r := mux.NewRouter()
-	http.HandleFunc("/api/sms", sendSMSHandler)
-	http.HandleFunc("/api/balance", getBalanceHandler)
-
-	//http.Handle("/", r)
-
+	router := mux.NewRouter().StrictSlash(true)
+	router.HandleFunc("/api/sms", sendSMSHandler).Methods("POST")
+	router.HandleFunc("/api/balance", getBalanceHandler).Methods("GET")
+	router.HandleFunc("/api/sms/{uuid}", getSMSHandler).Methods("GET")
 	bind := fmt.Sprintf("%s:%d", host, port)
 	log.Println("listening on: ", bind)
-	return http.ListenAndServe(bind, nil)
-
+	return http.ListenAndServe(bind, router)
 }

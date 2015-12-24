@@ -75,12 +75,30 @@ func UpdateMessageStatus(sms common.SMS) error {
 	return nil
 }
 
+func GetMessageByUuid(uuid string) (common.SMS, error) {
+	log.Println("GetMessageById:", uuid)
+	var sms common.SMS
+	query := fmt.Sprintf("SELECT uuid, message, mobile, status, retries FROM"+
+		" messages WHERE uuid == \"%s\"", uuid)
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return sms, fmt.Errorf("GetMessageByUuid: %s", err.Error())
+	}
+	defer rows.Close()
+	if rows.Next() {
+		rows.Scan(&sms.UUID, &sms.Body, &sms.Mobile, &sms.Status, &sms.Retries)
+	} else {
+		return sms, fmt.Errorf("GetMessageByUuid: Failed to get message %s", uuid)
+	}
+	return sms, nil
+}
+
 func GetPendingMessages() ([]common.SMS, error) {
-	log.Printf("GetPendingMessages")
+	log.Println("GetPendingMessages")
 	var messages []common.SMS
 	query := "SELECT uuid, message, mobile, status, retries FROM" +
 		" messages WHERE status != \"sent\" AND retries < 3"
-	log.Println("GetPendingMessages: ", query)
 
 	rows, err := db.Query(query)
 	if err != nil {
