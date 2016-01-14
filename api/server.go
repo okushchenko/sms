@@ -27,18 +27,15 @@ type BalanceResponse struct {
 }
 
 func sendSMSHandler(w http.ResponseWriter, r *http.Request) {
-	//if r.Method != "POST" {
-	//	http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
-	//	return
-	//}
 	w.Header().Set("Content-type", "application/json")
+	vars := mux.Vars(r)
 	r.ParseForm()
-	log.Printf("sendSMSHandler: %#v", r.Form)
+	log.Printf("sendSMSHandler: %#v %#v", vars, r.Form)
 	uuid := uuid.NewV1()
 	sms := &common.SMS{
 		UUID:   uuid.String(),
-		Mobile: r.FormValue("to"),
-		Body:   r.FormValue("text"),
+		Mobile: r.Form["to"][0],
+		Body:   r.Form["text"][0],
 		Status: "pending"}
 	err = db.InsertMessage(sms)
 	if err != nil {
@@ -58,10 +55,6 @@ func sendSMSHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBalanceHandler(w http.ResponseWriter, r *http.Request) {
-	//if r.Method != "GET" {
-	//	http.Error(w, http.StatusText(405), http.StatusMethodNotAllowed)
-	//	return
-	//}
 	w.Header().Set("Content-type", "application/json")
 	balance, err := modem.GetBalance(`*111#`)
 	if err != nil {
